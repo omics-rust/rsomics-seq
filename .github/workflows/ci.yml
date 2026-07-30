@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner:
+          - ubuntu-24.04
+          - ubuntu-24.04-arm
+          - macos-15-intel
+          - macos-15
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/checkout@v5
+        with:
+          repository: omics-rust/rsomics-seqio
+          ref: 0c20b6af566192b24bc1b3d0f7c9ad0c94df3119
+          path: deps/rsomics-seqio
+      - uses: actions/checkout@v5
+        with:
+          repository: omics-rust/rsomics-kmer
+          ref: 4258ac881119bcee69a3541119bb3e544500743a
+          path: deps/rsomics-kmer
+      - uses: dtolnay/rust-toolchain@1.91.0
+        with:
+          components: rustfmt, clippy
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.24.x"
+          cache: false
+
+      - name: Install pinned SeqKit oracle
+        run: |
+          go install github.com/shenwei356/seqkit/v2@v2.13.0
+          test "$(seqkit version)" = "seqkit v2.13.0"
+
+      - name: Configure unpublished foundation revisions
+        run: |
+          mkdir -p .cargo
+          cat > .cargo/config.toml <<'EOF'
+          [patch.crates-io]
+          rsomics-seqio = { path = "../deps/rsomics-seqio" }
+          rsomics-kmer = { path = "../deps/rsomics-kmer" }
+          EOF
+
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --locked --all-targets --all-features -- -D warnings
+      - run: cargo test --locked --all-features
+        env:
+          RSOMICS_REQUIRE_SEQKIT: "1"
+      - run: cargo bench --locked --bench operations -- --test
