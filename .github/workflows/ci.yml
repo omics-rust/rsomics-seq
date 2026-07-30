@@ -42,7 +42,7 @@ jobs:
 
       - name: Install pinned SeqKit oracle
         run: |
-          go install github.com/shenwei356/seqkit/v2@v2.13.0
+          go install github.com/shenwei356/seqkit/v2/seqkit@v2.13.0
           test "$(seqkit version)" = "seqkit v2.13.0"
 
       - name: Configure unpublished foundation revisions
