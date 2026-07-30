@@ -110,13 +110,13 @@ basic stats, literal ID/name/sequence grep modes, and FASTQ-to-FASTA conversion.
 K-mer counting is checked against a separate byte-window reference
 implementation, including canonicalization and ambiguity runs.
 
-Exact-head CI at revision `d1369a5fe8cb` passes on native Linux and macOS for
-both `x86_64` and `aarch64`. A representative Linux `x86_64` gate used
-6,282,141 compressed SRR341550 reads. Full `stats`, ID grep, sequence grep,
-FASTQ-to-FASTA, and FASTQ normalization outputs matched SeqKit 2.13.0 byte for
-byte. Canonical 21-mer counts over a 100,000-read subset matched Jellyfish
-2.3.1 for all 104,521 emitted rows. A malformed FASTQ failed after its valid
-prefix and did not commit the named report.
+The release gate runs on native Linux and macOS for both `x86_64` and
+`aarch64`. A representative Linux `x86_64` gate used 6,282,141 compressed
+SRR341550 reads. Full `stats`, ID grep, sequence grep, FASTQ-to-FASTA, and
+FASTQ normalization outputs matched SeqKit 2.13.0 byte for byte. Canonical
+21-mer counts over a 100,000-read subset matched Jellyfish 2.3.1 for all
+104,521 emitted rows. A malformed FASTQ failed after its valid prefix and did
+not commit the named report.
 
 On that host, `stats` and double-strand sequence grep were 1.32 and 1.82 times
 faster than their SeqKit counterparts while using substantially less peak
@@ -127,25 +127,21 @@ explicit throughput/resource tradeoffs, not a blanket replacement claim.
 Exact commands, distributions, RSS, checksums, and limitations are recorded in
 [`PERFORMANCE.md`](PERFORMANCE.md).
 
-The current commands are streaming operations and do not use the shared Rayon
-pool. `--threads` therefore does not currently scale them; compressed-path
-concurrency comes from the fixed reader/decompressor pipeline. Resolving that
-misleading shared flag is a release API gate, not a reason to add speculative
-parallel implementations.
+The current commands are streaming operations and do not advertise a thread
+count. Compressed-path concurrency comes from the fixed reader/decompressor
+pipeline; speculative parallel implementations are outside this release.
 
 ## Current limitations
 
 - Extended `seqkit stats --all` columns are not yet exposed.
 - `kmers` is an exact in-memory counter and is not intended for
   cardinalities that require a disk-backed counter.
-- `rsomics-seqio 0.2.0` and `rsomics-kmer 0.2.1` are not published yet.
-  The manifest uses versioned registry dependencies; local development uses
-  external Cargo patch configuration rather than committed path dependencies.
+- `rsomics-common 0.7`, `rsomics-help 0.4`, `rsomics-seqio 0.3`, and
+  `rsomics-kmer 0.2.1` are not published yet. The manifest uses versioned
+  registry dependencies; CI temporarily patches exact revisions without
+  committing path dependencies.
 - Native Linux `aarch64` has correctness and compatibility CI but no
   representative performance measurement.
-- The current `rsomics-help` API duplicates command metadata instead of
-  deriving nested help from Clap. This product keeps one Clap command tree and
-  does not freeze a second help schema until the shared API is redesigned.
 
 ## Origin and license
 

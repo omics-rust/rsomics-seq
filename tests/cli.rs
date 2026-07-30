@@ -83,6 +83,26 @@ fn help_succeeds_without_input() {
 }
 
 #[test]
+fn help_exposes_only_applicable_global_options() {
+    let output = run(&["--help"]);
+    assert!(output.status.success());
+    let help = String::from_utf8(output.stdout).unwrap();
+    assert!(help.contains("Global options:"));
+    assert!(help.contains("--json"));
+    for absent in ["--threads", "--seed", "--quiet", "--verbose"] {
+        assert!(!help.contains(absent), "{absent} should not be advertised");
+    }
+
+    let nested = run(&["help", "kmers"]);
+    assert!(nested.status.success());
+    assert!(
+        String::from_utf8(nested.stdout)
+            .unwrap()
+            .contains("Usage: rsomics-seq kmers")
+    );
+}
+
+#[test]
 fn grep_literal_modes_preserve_format_and_order() {
     let id = run(&["grep", "--pattern", "seq1", "tests/golden/records.fa"]);
     assert!(id.status.success());

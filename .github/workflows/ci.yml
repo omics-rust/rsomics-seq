@@ -20,27 +20,32 @@ jobs:
     runs-on: ${{ matrix.runner }}
 
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6
         with:
           repository: omics-rust/rsomics-common
-          ref: 1c51f7d0b356683697942d9c6a0f60585e0dc8a9
-          path: deps/rsomics-common
-      - uses: actions/checkout@v5
+          ref: 9f11f37c0fa48a24cae12549769f3395d9d0f19f
+          path: target/ci/rsomics-common
+      - uses: actions/checkout@v6
+        with:
+          repository: omics-rust/rsomics-help
+          ref: c615aa8b85224055faad57c86abd068aded89d06
+          path: target/ci/rsomics-help
+      - uses: actions/checkout@v6
         with:
           repository: omics-rust/rsomics-seqio
-          ref: ce9c5514c23573a64406e1ff9ad02edfa4d02d31
-          path: deps/rsomics-seqio
-      - uses: actions/checkout@v5
+          ref: b23cf8ad29fd06c84aaaa0c480ba1da8cff01e7d
+          path: target/ci/rsomics-seqio
+      - uses: actions/checkout@v6
         with:
           repository: omics-rust/rsomics-kmer
           ref: 4258ac881119bcee69a3541119bb3e544500743a
-          path: deps/rsomics-kmer
-      - uses: actions/checkout@v5
+          path: target/ci/rsomics-kmer
+      - uses: actions/checkout@v6
         with:
           repository: shenwei356/seqkit
           ref: d13b5fa388cc869de05abe1bdb07980eef5efb4e
-          path: deps/seqkit
+          path: target/ci/seqkit
       - uses: dtolnay/rust-toolchain@1.91.0
         with:
           components: rustfmt, clippy
@@ -51,7 +56,7 @@ jobs:
           cache: false
 
       - name: Build pinned SeqKit oracle
-        working-directory: deps/seqkit
+        working-directory: target/ci/seqkit
         run: |
           go build -trimpath -o "$RUNNER_TEMP/seqkit" ./seqkit
           test "$("$RUNNER_TEMP/seqkit" version)" = "seqkit v2.13.0"
@@ -59,17 +64,24 @@ jobs:
 
       - name: Configure unpublished foundation revisions
         run: |
-          mkdir -p .cargo
-          cat > .cargo/config.toml <<'EOF'
+          mkdir -p "$RUNNER_TEMP/cargo-home"
+          cat > "$RUNNER_TEMP/cargo-home/config.toml" <<EOF
           [patch.crates-io]
-          rsomics-common = { path = "deps/rsomics-common" }
-          rsomics-seqio = { path = "deps/rsomics-seqio" }
-          rsomics-kmer = { path = "deps/rsomics-kmer" }
+          rsomics-common = { path = "$GITHUB_WORKSPACE/target/ci/rsomics-common" }
+          rsomics-help = { path = "$GITHUB_WORKSPACE/target/ci/rsomics-help" }
+          rsomics-seqio = { path = "$GITHUB_WORKSPACE/target/ci/rsomics-seqio" }
+          rsomics-kmer = { path = "$GITHUB_WORKSPACE/target/ci/rsomics-kmer" }
           EOF
+          echo "CARGO_HOME=$RUNNER_TEMP/cargo-home" >> "$GITHUB_ENV"
 
       - run: cargo fmt --all -- --check
+        if: matrix.runner == 'ubuntu-24.04'
       - run: cargo clippy --locked --all-targets --all-features -- -D warnings
+        if: matrix.runner == 'ubuntu-24.04'
+      - run: cargo package --locked
+        if: matrix.runner == 'ubuntu-24.04'
       - run: cargo test --locked --all-features
         env:
           RSOMICS_REQUIRE_SEQKIT: "1"
       - run: cargo bench --locked --bench operations -- --test
+        if: matrix.runner == 'ubuntu-24.04'

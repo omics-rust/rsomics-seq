@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use clap::{Args, Parser, Subcommand};
-use rsomics_common::{CommonFlags, Result, RsomicsError, ToolMeta};
+use rsomics_common::{OutputArgs, Result, RsomicsError, ToolMeta};
 use serde::Serialize;
 
 use rsomics_seq::{
@@ -30,7 +30,7 @@ pub struct Cli {
     command: Command,
 
     #[command(flatten)]
-    pub common: CommonFlags,
+    pub output: OutputArgs,
 }
 
 #[derive(Debug, Subcommand)]
@@ -154,7 +154,7 @@ pub enum CommandResult {
 
 impl Cli {
     pub fn execute(self) -> Result<CommandResult> {
-        let json = self.common.json;
+        let json = self.output.json;
         match self.command {
             Command::Stats(args) => {
                 validate_json_output(json, &args.output)?;
