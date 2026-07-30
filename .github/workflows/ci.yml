@@ -57,8 +57,8 @@ jobs:
           mkdir -p .cargo
           cat > .cargo/config.toml <<'EOF'
           [patch.crates-io]
-          rsomics-seqio = { path = "../deps/rsomics-seqio" }
-          rsomics-kmer = { path = "../deps/rsomics-kmer" }
+          rsomics-seqio = { path = "deps/rsomics-seqio" }
+          rsomics-kmer = { path = "deps/rsomics-kmer" }
           EOF
 
       - run: cargo fmt --all -- --check
