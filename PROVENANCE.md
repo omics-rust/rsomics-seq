@@ -17,7 +17,7 @@
 Foundation revisions exercised by this slice:
 
 - `rsomics-common` `1c51f7d0b356683697942d9c6a0f60585e0dc8a9`
-- `rsomics-seqio` `c42f4212b78516cf3e756376d3581d08aff59879`
+- `rsomics-seqio` `b317e8bcba31f5df697f60b3eb2a5c224b8b8058`
 - `rsomics-kmer` `4258ac881119bcee69a3541119bb3e544500743a`
 - `rsomics-common` `ed02bcb9f813`
 
