@@ -19,7 +19,6 @@ Foundation revisions exercised by this slice:
 - `rsomics-common` `1c51f7d0b356683697942d9c6a0f60585e0dc8a9`
 - `rsomics-seqio` `ce9c5514c23573a64406e1ff9ad02edfa4d02d31`
 - `rsomics-kmer` `4258ac881119bcee69a3541119bb3e544500743a`
-- `rsomics-common` `ed02bcb9f813`
 
 All listed rsomics implementations are team-owned.
 
@@ -78,9 +77,17 @@ All listed rsomics implementations are team-owned.
   `tests/kmers_oracle.rs`. It uppercases valid windows, skips windows with
   non-ACGT bytes, and computes reverse complements independently of
   `rsomics-kmer`.
+- Representative canonical k-mer oracle: Jellyfish 2.3.1 `count -C`, followed
+  by `dump` and deterministic count/lexicographic ordering.
 
 No performance result is inherited as a pass. Historical timings used
 different binaries and I/O stacks.
+
+The 2026-07-30 Linux `x86_64` gate at product revision
+`d1369a5fe8cbb2d77f847242ac569d11c7777bc8` records full-stream SeqKit
+comparisons, a non-trivial Jellyfish comparison, strict malformed-input
+behavior, timing distributions, peak RSS, and the non-scaling `--threads`
+control in [`PERFORMANCE.md`](PERFORMANCE.md).
 
 ## Consumer-driven foundation feedback
 
