@@ -80,9 +80,7 @@ impl Accumulator {
             RsomicsError::InvalidInput("sequence length cannot be represented as u64".into())
         })?;
         if self.seq_type.is_none() {
-            self.seq_type = Some(classify(
-                &sequence[..sequence.len().min(ALPHABET_GUESS_BASES)],
-            ));
+            self.seq_type = Some(classify_record(sequence));
             self.min_len = len;
         } else {
             self.min_len = self.min_len.min(len);
@@ -181,6 +179,10 @@ fn format_name(format: Format) -> &'static str {
         Format::Fasta => "FASTA",
         Format::Fastq => "FASTQ",
     }
+}
+
+pub(crate) fn classify_record(sequence: &[u8]) -> SeqType {
+    classify(&sequence[..sequence.len().min(ALPHABET_GUESS_BASES)])
 }
 
 fn classify(sample: &[u8]) -> SeqType {

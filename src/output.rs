@@ -61,13 +61,14 @@ fn canonicalize_if_exists(path: &Path, role: &str) -> Result<Option<std::path::P
     }
 }
 
-pub(crate) fn with_output(
+pub(crate) fn with_output<T>(
     path: &Path,
-    operation: impl FnOnce(&mut dyn Write) -> Result<()>,
-) -> Result<()> {
+    operation: impl FnOnce(&mut dyn Write) -> Result<T>,
+) -> Result<T> {
     if path == Path::new("-") {
         return operation(&mut io::stdout().lock());
     }
+    reject_unsupported_compression_suffix(path)?;
 
     let existing_permissions = match fs::metadata(path) {
         Ok(metadata) => Some(metadata.permissions()),
@@ -108,7 +109,7 @@ pub(crate) fn with_output(
             .rs_with_context(|| format!("preserving permissions for output {}", path.display()))?;
     }
 
-    operation(temporary.as_file_mut())?;
+    let result = operation(temporary.as_file_mut())?;
     temporary
         .as_file_mut()
         .flush()
@@ -128,6 +129,20 @@ pub(crate) fn with_output(
             ),
         ))
     })?;
+    Ok(result)
+}
+
+fn reject_unsupported_compression_suffix(path: &Path) -> Result<()> {
+    let extension = path
+        .extension()
+        .and_then(std::ffi::OsStr::to_str)
+        .map(str::to_ascii_lowercase);
+    if matches!(extension.as_deref(), Some("gz" | "bgz" | "bgzf")) {
+        return Err(RsomicsError::ConfigError(format!(
+            "compressed output is not implemented; refusing to write uncompressed data to {}",
+            path.display()
+        )));
+    }
     Ok(())
 }
 
@@ -143,7 +158,7 @@ mod tests {
 
         let error = with_output(&output, |temporary| {
             temporary.write_all(b"partial replacement\n")?;
-            Err(RsomicsError::InvalidInput("late failure".into()))
+            Err::<(), _>(RsomicsError::InvalidInput("late failure".into()))
         })
         .unwrap_err();
 
@@ -159,5 +174,23 @@ mod tests {
         fs::write(&input, b">record\nACGT\n").unwrap();
 
         reject_output_alias(&output, [input.as_path()]).unwrap();
+    }
+
+    #[test]
+    fn compressed_suffix_is_rejected_before_file_creation() {
+        let directory = tempfile::tempdir().unwrap();
+        let output = directory.path().join("records.fa.gz");
+        let error = with_output(&output, |writer| {
+            writer.write_all(b">one\nACGT\n")?;
+            Ok(())
+        })
+        .unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains("compressed output is not implemented")
+        );
+        assert!(!output.exists());
     }
 }

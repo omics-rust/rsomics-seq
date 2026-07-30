@@ -37,6 +37,27 @@ fn run_with_output(operation: &str, input: &Path, output: &Path) -> std::process
                 .arg("--output")
                 .arg(output);
         }
+        "grep" => {
+            command
+                .args(["grep", "--pattern", "seq1"])
+                .arg(input)
+                .arg("--output")
+                .arg(output);
+        }
+        "convert" => {
+            command
+                .args(["convert", "--to", "fasta"])
+                .arg(input)
+                .arg("--output")
+                .arg(output);
+        }
+        "validate" => {
+            command
+                .arg("validate")
+                .arg(input)
+                .arg("--output")
+                .arg(output);
+        }
         _ => panic!("unknown operation"),
     }
     command.output().unwrap()
@@ -44,7 +65,14 @@ fn run_with_output(operation: &str, input: &Path, output: &Path) -> std::process
 
 #[test]
 fn help_succeeds_without_input() {
-    for args in [&["--help"][..], &["stats", "--help"], &["kmers", "--help"]] {
+    for args in [
+        &["--help"][..],
+        &["stats", "--help"],
+        &["kmers", "--help"],
+        &["grep", "--help"],
+        &["convert", "--help"],
+        &["validate", "--help"],
+    ] {
         let output = run(args);
         assert!(
             output.status.success(),
@@ -52,6 +80,121 @@ fn help_succeeds_without_input() {
             String::from_utf8_lossy(&output.stderr)
         );
     }
+}
+
+#[test]
+fn grep_literal_modes_preserve_format_and_order() {
+    let id = run(&["grep", "--pattern", "seq1", "tests/golden/records.fa"]);
+    assert!(id.status.success());
+    assert_eq!(id.stdout, b">seq1 alpha\nACGTACGT\n");
+
+    let name = run(&[
+        "grep",
+        "--by-name",
+        "--pattern",
+        "seq2 beta",
+        "tests/golden/records.fa",
+    ]);
+    assert!(name.status.success());
+    assert_eq!(name.stdout, b">seq2 beta\nTTTTAAAACCCCGGGG\n");
+
+    let insensitive_inverted = run(&[
+        "grep",
+        "--ignore-case",
+        "--invert-match",
+        "--pattern",
+        "SEQ3",
+        "tests/golden/records.fa",
+    ]);
+    assert!(insensitive_inverted.status.success());
+    assert_eq!(
+        insensitive_inverted.stdout,
+        b">seq1 alpha\nACGTACGT\n>seq2 beta\nTTTTAAAACCCCGGGG\n"
+    );
+}
+
+#[test]
+fn grep_sequence_searches_both_strands_unless_positive_only() {
+    let both = run(&[
+        "grep",
+        "--by-seq",
+        "--pattern",
+        "GGGGTTTT",
+        "tests/golden/records.fa",
+    ]);
+    assert!(both.status.success());
+    assert_eq!(both.stdout, b">seq2 beta\nTTTTAAAACCCCGGGG\n");
+
+    let positive = run(&[
+        "grep",
+        "--by-seq",
+        "--only-positive-strand",
+        "--pattern",
+        "GGGGTTTT",
+        "tests/golden/records.fa",
+    ]);
+    assert!(positive.status.success());
+    assert!(positive.stdout.is_empty());
+}
+
+#[test]
+fn grep_and_convert_fastq_preserve_records() {
+    let grep = run(&["grep", "--pattern", "r2", "tests/golden/stats.fq"]);
+    assert!(grep.status.success());
+    assert_eq!(grep.stdout, b"@r2\nACGTNN\n+\nIIIIII\n");
+
+    let convert = run(&["convert", "--to", "fasta", "tests/golden/stats.fq"]);
+    assert!(convert.status.success());
+    assert_eq!(convert.stdout, b">r1\nACGT\n>r2\nACGTNN\n>r3\nGGCCGGCC\n");
+}
+
+#[test]
+fn convert_to_fastq_requires_real_quality_scores() {
+    let result = run(&["convert", "--to", "fastq", "tests/golden/stats.fa"]);
+    assert_eq!(result.status.code(), Some(1));
+    assert!(result.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&result.stderr).contains("without quality scores"));
+}
+
+#[test]
+fn validate_reports_complete_strict_scan() {
+    let text = run(&["validate", "tests/golden/stats.fq"]);
+    assert!(text.status.success());
+    assert_eq!(
+        text.stdout,
+        b"input\tformat\trecords\tvalid\ntests/golden/stats.fq\tFASTQ\t3\ttrue\n"
+    );
+
+    let json = run(&["--json", "validate", "tests/golden/stats.fa"]);
+    assert!(json.status.success());
+    let envelope: serde_json::Value = serde_json::from_slice(&json.stdout).unwrap();
+    assert_eq!(envelope["result"]["operation"], "validate");
+    assert_eq!(envelope["result"]["data"]["records"], 5);
+    assert_eq!(envelope["result"]["data"]["valid"], true);
+}
+
+#[test]
+fn validate_rejects_damage_after_valid_prefix_without_replacing_output() {
+    let directory = tempfile::tempdir().unwrap();
+    let input = directory.path().join("trailing-damage.fq");
+    let output = directory.path().join("validation.tsv");
+    fs::write(
+        &input,
+        b"@one\nACGT\n+\nIIII\n@two\nTGCA\n+\nFFFF\n@broken\nACGT\n+\nIII\n",
+    )
+    .unwrap();
+    fs::write(&output, b"existing report\n").unwrap();
+
+    let result = run(&[
+        "validate",
+        input.to_str().unwrap(),
+        "--output",
+        output.to_str().unwrap(),
+    ]);
+
+    assert_eq!(result.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&result.stderr).contains("truncated FASTQ quality"));
+    assert_eq!(fs::read(output).unwrap(), b"existing report\n");
 }
 
 #[test]
@@ -202,8 +345,29 @@ fn json_output_conflict_is_config_error_exit_two() {
 }
 
 #[test]
+fn compressed_output_suffix_is_rejected_instead_of_writing_plain_text() {
+    let directory = tempfile::tempdir().unwrap();
+    let output_path = directory.path().join("records.fa.gz");
+    let result = run(&[
+        "convert",
+        "--to",
+        "fasta",
+        "--output",
+        output_path.to_str().unwrap(),
+        "tests/golden/stats.fa",
+    ]);
+
+    assert_eq!(result.status.code(), Some(2));
+    assert!(result.stdout.is_empty());
+    assert!(
+        String::from_utf8_lossy(&result.stderr).contains("compressed output is not implemented")
+    );
+    assert!(!output_path.exists());
+}
+
+#[test]
 fn exact_normalized_and_hardlink_output_aliases_preserve_inputs() {
-    for operation in ["stats", "kmers"] {
+    for operation in ["stats", "kmers", "grep", "convert", "validate"] {
         for alias in ["exact", "normalized", "hardlink"] {
             let directory = tempfile::tempdir().unwrap();
             let input = directory.path().join("input.fa");
@@ -237,7 +401,7 @@ fn exact_normalized_and_hardlink_output_aliases_preserve_inputs() {
 fn symlink_output_aliases_preserve_inputs() {
     use std::os::unix::fs::symlink;
 
-    for operation in ["stats", "kmers"] {
+    for operation in ["stats", "kmers", "grep", "convert", "validate"] {
         let directory = tempfile::tempdir().unwrap();
         let input = directory.path().join("input.fa");
         let output = directory.path().join("output.tsv");
@@ -263,7 +427,7 @@ fn named_outputs_are_transactional_on_operation_failure() {
     let output = directory.path().join("output.tsv");
     fs::write(&malformed, b"@read\nACGT\n+\n!!!\n").unwrap();
 
-    for operation in ["stats", "kmers"] {
+    for operation in ["stats", "kmers", "grep", "convert", "validate"] {
         fs::write(&output, b"existing output\n").unwrap();
         let result = run_with_output(operation, &malformed, &output);
         assert_eq!(
@@ -382,4 +546,45 @@ fn stats_reads_content_detected_gzip() {
         .unwrap();
     assert!(output.status.success());
     assert!(String::from_utf8_lossy(&output.stdout).contains("\tFASTA\tDNA\t1\t4\t4\t4.0\t4"));
+}
+
+#[test]
+fn grep_convert_and_validate_read_content_detected_gzip() {
+    let file = tempfile::Builder::new().suffix(".data").tempfile().unwrap();
+    let mut writer = rsomics_seqio::create_path(
+        file.path(),
+        rsomics_seqio::Format::Fastq,
+        rsomics_seqio::Compression::Gzip { level: 4 },
+    )
+    .unwrap();
+    writer
+        .write_record(rsomics_seqio::Record {
+            id: b"one sample",
+            seq: b"ACGT",
+            qual: Some(b"IIII"),
+        })
+        .unwrap();
+    writer.finish().unwrap();
+    let path = file.path().to_str().unwrap();
+
+    let grep = Command::new(binary())
+        .args(["grep", "--pattern", "one", path])
+        .output()
+        .unwrap();
+    assert!(grep.status.success());
+    assert_eq!(grep.stdout, b"@one sample\nACGT\n+\nIIII\n");
+
+    let convert = Command::new(binary())
+        .args(["convert", "--to", "fasta", path])
+        .output()
+        .unwrap();
+    assert!(convert.status.success());
+    assert_eq!(convert.stdout, b">one sample\nACGT\n");
+
+    let validate = Command::new(binary())
+        .args(["validate", path])
+        .output()
+        .unwrap();
+    assert!(validate.status.success());
+    assert!(String::from_utf8_lossy(&validate.stdout).contains("\tFASTQ\t1\ttrue"));
 }

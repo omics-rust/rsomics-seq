@@ -1,7 +1,10 @@
 use std::io::Write;
 
 use criterion::{Criterion, criterion_group, criterion_main};
-use rsomics_seq::{KmerOptions, compute_stats, count_kmers};
+use rsomics_seq::{
+    ConvertFormat, GrepMode, GrepOptions, KmerOptions, compute_stats, convert_sequences,
+    count_kmers, grep_records, validate_sequences,
+};
 
 fn fixture(records: usize) -> tempfile::NamedTempFile {
     let mut file = tempfile::Builder::new().suffix(".fa").tempfile().unwrap();
@@ -35,6 +38,22 @@ fn operations(c: &mut Criterion) {
             )
             .unwrap()
         });
+    });
+    c.bench_function("grep_id_100k_fasta_records", |b| {
+        let options = GrepOptions {
+            patterns: vec!["record-99999".into()],
+            mode: GrepMode::Id,
+            ignore_case: false,
+            invert_match: false,
+            only_positive_strand: false,
+        };
+        b.iter(|| grep_records(&input, &options, &mut std::io::sink()).unwrap());
+    });
+    c.bench_function("convert_fasta_100k_records", |b| {
+        b.iter(|| convert_sequences(&input, ConvertFormat::Fasta, &mut std::io::sink()).unwrap());
+    });
+    c.bench_function("validate_100k_fasta_records", |b| {
+        b.iter(|| validate_sequences(&input).unwrap());
     });
 }
 

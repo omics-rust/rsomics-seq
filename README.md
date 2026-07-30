@@ -1,13 +1,16 @@
 # rsomics-seq
 
 `rsomics-seq` is the coherent FASTA/FASTQ utility product in the rsomics
-family. The first consumer slice contains two complete commands:
+family. Its first release scope contains five complete commands:
 
 - `stats`: basic per-input sequence statistics compatible with
   `seqkit stats -T`;
-- `kmers`: deterministic exact DNA k-mer counts over FASTA or FASTQ.
+- `kmers`: deterministic exact DNA k-mer counts over FASTA or FASTQ;
+- `grep`: literal record filtering by ID, full name, or sequence;
+- `convert`: FASTA/FASTQ normalization and FASTQ-to-FASTA conversion;
+- `validate`: strict complete-stream FASTA/FASTQ validation.
 
-Both commands accept plain, gzip, or BGZF input detected from content.
+All commands accept plain, gzip, or BGZF input detected from content.
 `-` reads stdin.
 
 ## Usage
@@ -17,17 +20,24 @@ rsomics-seq stats assembly.fa reads.fq.gz
 cat assembly.fa | rsomics-seq stats -
 rsomics-seq kmers -k 21 --canonical --min-count 2 assembly.fa
 rsomics-seq kmers -k 15 reads.fq.gz --json
+rsomics-seq grep -p chrM assembly.fa
+rsomics-seq grep --by-seq -p ACGT reads.fq.gz
+rsomics-seq convert --to fasta reads.fq.gz
+rsomics-seq validate assembly.fa
 ```
 
-Text output is TSV. `--json` emits the versioned `rsomics-common` envelope to
-stdout; combining it with a file `--output` is a configuration error with exit
-code 2.
+`stats`, `kmers`, and `validate` text reports are TSV. `grep` and `convert`
+write FASTA/FASTQ records. `--json` suppresses record/TSV output and emits the
+versioned `rsomics-common` report envelope to stdout; combining it with a file
+`--output` is a configuration error with exit code 2.
 
-Named TSV outputs are written to a same-directory temporary file and atomically
+Named outputs are written to a same-directory temporary file and atomically
 persisted only after the operation succeeds. Exact, normalized, hard-link, and
 symbolic-link aliases of any input are rejected before reading or truncating
 data. New outputs use normal `0666 & !umask` permissions; replacements preserve
 the existing permission bits.
+Compressed named output is not implemented in this release; `.gz`, `.bgz`, and
+`.bgzf` output names are rejected instead of receiving uncompressed bytes.
 
 ## Stable command semantics
 
@@ -57,23 +67,57 @@ reproducing permissive recovery behavior from older micro-crates.
 The JSON report includes candidate, valid, skipped, distinct, and emitted
 window/count totals. TSV contains only `kmer` and `count`.
 
+### `grep`
+
+- ID mode is the default and matches the token before the first ASCII
+  whitespace by whole-string equality.
+- `--by-name` matches the complete header by whole-string equality.
+- `--by-seq` performs literal substring matching. DNA/RNA input searches both
+  strands by default; `--only-positive-strand` disables the reverse-complement
+  search. Protein or unclassified input is searched only on the positive
+  strand.
+- `--ignore-case`, `--invert-match`, repeated `--pattern`, and comma-separated
+  patterns are supported.
+- Selected records retain input order and input format.
+
+Regexes, pattern files, degenerate expansion, mismatch matching, region
+restriction, circular matching, duplicate emission, and record-count limiting
+are explicitly outside this release scope.
+
+### `convert`
+
+- Same-format conversion normalizes records through the strict
+  `rsomics-seqio` writer.
+- FASTQ-to-FASTA conversion removes quality scores.
+- FASTA-to-FASTQ conversion fails non-zero because the command never invents
+  quality scores. SeqKit's separate `fa2fq` lookup workflow is not represented
+  as a direct format conversion.
+- Header rewriting, sequence transforms, tabular `fx2tab` output, and dummy
+  quality generation are outside this release scope.
+
+### `validate`
+
+Validation parses the complete stream with `rsomics-seqio` and reports the
+detected format and record count only after success. Format, decompression,
+record, and I/O errors propagate non-zero. Validation does not silently repair,
+skip, or rewrite malformed records.
+
 ## Compatibility and evidence
 
 Committed FASTA and FASTQ goldens were captured from SeqKit and run on every
-test platform. CI installs SeqKit v2.13.0 and requires the live differential.
+test platform. CI installs SeqKit v2.13.0 and requires live differentials for
+basic stats, literal ID/name/sequence grep modes, and FASTQ-to-FASTA conversion.
 K-mer counting is checked against a separate byte-window reference
 implementation, including canonicalization and ambiguity runs.
 
-The Criterion benchmark is a local hot-path scaffold, not a performance
-claim. `scripts/perf.sh` records the command shape for a future representative
-SeqKit comparison. No operation is release-ready until timing distribution,
-peak memory, fixture checksum, machine, compression, and thread provenance are
-recorded.
+Criterion covers all five command paths as a local hot-path scaffold, not a
+performance claim. `scripts/perf.sh` records the command shape for a future
+representative SeqKit comparison. No operation is release-ready until timing
+distribution, peak memory, fixture checksum, machine, compression, and thread
+provenance are recorded.
 
 ## Current limitations
 
-- Only `stats` and `kmers` are implemented. The dossier's `grep`, `convert`,
-  and `validate` commands remain excluded from this slice.
 - Extended `seqkit stats --all` columns are not yet exposed.
 - `kmers` is an exact in-memory counter and is not intended for
   cardinalities that require a disk-backed counter.

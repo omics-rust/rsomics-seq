@@ -23,8 +23,13 @@ jobs:
       - uses: actions/checkout@v5
       - uses: actions/checkout@v5
         with:
+          repository: omics-rust/rsomics-common
+          ref: 1c51f7d0b356683697942d9c6a0f60585e0dc8a9
+          path: deps/rsomics-common
+      - uses: actions/checkout@v5
+        with:
           repository: omics-rust/rsomics-seqio
-          ref: 0c20b6af566192b24bc1b3d0f7c9ad0c94df3119
+          ref: c42f4212b78516cf3e756376d3581d08aff59879
           path: deps/rsomics-seqio
       - uses: actions/checkout@v5
         with:
@@ -57,6 +62,7 @@ jobs:
           mkdir -p .cargo
           cat > .cargo/config.toml <<'EOF'
           [patch.crates-io]
+          rsomics-common = { path = "deps/rsomics-common" }
           rsomics-seqio = { path = "deps/rsomics-seqio" }
           rsomics-kmer = { path = "deps/rsomics-kmer" }
           EOF
