@@ -19,6 +19,18 @@ fn run(args: &[&str]) -> std::process::Output {
         .expect("run rsomics-seq")
 }
 
+fn write_gzip_fixture(
+    path: &Path,
+    format: rsomics_seqio::Format,
+    record: rsomics_seqio::Record<'_>,
+) {
+    let file = fs::File::create(path).unwrap();
+    let encoder = flate2::write::GzEncoder::new(file, flate2::Compression::default());
+    let mut writer = rsomics_seqio::Writer::new(encoder, format);
+    writer.write_record(record).unwrap();
+    writer.finish_into_inner().unwrap().finish().unwrap();
+}
+
 fn error_envelope(output: &std::process::Output) -> serde_json::Value {
     let first_line = output.stderr.split(|&byte| byte == b'\n').next().unwrap();
     serde_json::from_slice(first_line).unwrap()
@@ -545,20 +557,15 @@ fn stats_multiple_inputs_preserve_order_and_reject_mixed_stdin() {
 #[test]
 fn stats_reads_content_detected_gzip() {
     let file = tempfile::Builder::new().suffix(".data").tempfile().unwrap();
-    let mut writer = rsomics_seqio::create_path(
+    write_gzip_fixture(
         file.path(),
         rsomics_seqio::Format::Fasta,
-        rsomics_seqio::Compression::Gzip { level: 4 },
-    )
-    .unwrap();
-    writer
-        .write_record(rsomics_seqio::Record {
+        rsomics_seqio::Record {
             id: b"one",
             seq: b"ACGT",
             qual: None,
-        })
-        .unwrap();
-    writer.finish().unwrap();
+        },
+    );
 
     let output = Command::new(binary())
         .args(["stats", file.path().to_str().unwrap()])
@@ -571,20 +578,15 @@ fn stats_reads_content_detected_gzip() {
 #[test]
 fn grep_convert_and_validate_read_content_detected_gzip() {
     let file = tempfile::Builder::new().suffix(".data").tempfile().unwrap();
-    let mut writer = rsomics_seqio::create_path(
+    write_gzip_fixture(
         file.path(),
         rsomics_seqio::Format::Fastq,
-        rsomics_seqio::Compression::Gzip { level: 4 },
-    )
-    .unwrap();
-    writer
-        .write_record(rsomics_seqio::Record {
+        rsomics_seqio::Record {
             id: b"one sample",
             seq: b"ACGT",
             qual: Some(b"IIII"),
-        })
-        .unwrap();
-    writer.finish().unwrap();
+        },
+    );
     let path = file.path().to_str().unwrap();
 
     let grep = Command::new(binary())

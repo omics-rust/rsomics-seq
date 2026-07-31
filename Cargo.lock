@@ -463,6 +463,7 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "criterion",
+ "flate2",
  "memchr",
  "rsomics-common",
  "rsomics-help",
