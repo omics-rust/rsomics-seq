@@ -81,7 +81,9 @@ where
         .read_record()
         .rs_with_context(|| format!("reading {input} after record {record_number}"))?
     {
-        record_number += 1;
+        record_number = record_number.checked_add(1).ok_or_else(|| {
+            rsomics_common::RsomicsError::InvalidInput("record count exceeds u64 capacity".into())
+        })?;
         visit(format, record)
             .rs_with_context(|| format!("processing {input} record {record_number}"))?;
     }

@@ -150,9 +150,7 @@ pub fn grep_records(
 
     let (format, total_records, matched_records) =
         copy_matching_records(input, output, |record| {
-            if sequence_type.is_none() {
-                sequence_type = Some(classify_record(record.seq));
-            }
+            let sequence_type = *sequence_type.get_or_insert_with(|| classify_record(record.seq));
             let hit = match options.mode {
                 GrepMode::Id => patterns.matches(split_id(record.id), options.ignore_case),
                 GrepMode::Name => patterns.matches(record.id, options.ignore_case),
@@ -161,7 +159,7 @@ pub fn grep_records(
                     &patterns,
                     options.ignore_case,
                     options.only_positive_strand,
-                    sequence_type.expect("set from current record"),
+                    sequence_type,
                 ),
             };
             Ok(hit != options.invert_match)

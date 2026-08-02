@@ -23,11 +23,6 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/checkout@v6
         with:
-          repository: omics-rust/rsomics-kmer
-          ref: 4258ac881119bcee69a3541119bb3e544500743a
-          path: target/ci/rsomics-kmer
-      - uses: actions/checkout@v6
-        with:
           repository: shenwei356/seqkit
           ref: d13b5fa388cc869de05abe1bdb07980eef5efb4e
           path: target/ci/seqkit
@@ -47,19 +42,14 @@ jobs:
           test "$("$RUNNER_TEMP/seqkit" version)" = "seqkit v2.13.0"
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
 
-      - name: Configure unpublished k-mer revision
-        run: |
-          mkdir -p "$RUNNER_TEMP/cargo-home"
-          cat > "$RUNNER_TEMP/cargo-home/config.toml" <<EOF
-          [patch.crates-io]
-          rsomics-kmer = { path = "$GITHUB_WORKSPACE/target/ci/rsomics-kmer" }
-          EOF
-          echo "CARGO_HOME=$RUNNER_TEMP/cargo-home" >> "$GITHUB_ENV"
-
       - run: cargo fmt --all -- --check
         if: matrix.runner == 'ubuntu-24.04'
       - run: cargo clippy --locked --all-targets --all-features -- -D warnings
         if: matrix.runner == 'ubuntu-24.04'
+      - run: cargo doc --locked --no-deps --all-features
+        if: matrix.runner == 'ubuntu-24.04'
+        env:
+          RUSTDOCFLAGS: -D warnings
       - run: cargo package --locked
         if: matrix.runner == 'ubuntu-24.04'
       - run: cargo test --locked --all-features

@@ -1,138 +1,22 @@
-use std::fs;
-use std::io::{self, Write};
+use std::io::Write;
 use std::path::Path;
 
-use rsomics_common::{Context, Result, RsomicsError};
-#[cfg(unix)]
-use std::os::unix::fs::PermissionsExt;
-use tempfile::Builder;
+use rsomics_common::{Result, RsomicsError, write_output};
 
-pub(crate) fn reject_output_alias<'a>(
-    output: &Path,
-    inputs: impl IntoIterator<Item = &'a Path>,
-) -> Result<()> {
-    if output == Path::new("-") {
-        return Ok(());
-    }
-    for input in inputs.into_iter().filter(|input| *input != Path::new("-")) {
-        if paths_alias(input, output)? {
-            return Err(RsomicsError::ConfigError(format!(
-                "output {} is also an input path",
-                output.display()
-            )));
-        }
-    }
-    Ok(())
-}
-
-fn paths_alias(left: &Path, right: &Path) -> Result<bool> {
-    if left == right {
-        return Ok(true);
-    }
-    match same_file::is_same_file(left, right) {
-        Ok(true) => return Ok(true),
-        Ok(false) => {}
-        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-        Err(error) => {
-            return Err(RsomicsError::Io(io::Error::new(
-                error.kind(),
-                format!(
-                    "comparing input {} with output {}: {error}",
-                    left.display(),
-                    right.display()
-                ),
-            )));
-        }
-    }
-
-    let left = canonicalize_if_exists(left, "input")?;
-    let right = canonicalize_if_exists(right, "output")?;
-    Ok(matches!((left, right), (Some(left), Some(right)) if left == right))
-}
-
-fn canonicalize_if_exists(path: &Path, role: &str) -> Result<Option<std::path::PathBuf>> {
-    match fs::canonicalize(path) {
-        Ok(path) => Ok(Some(path)),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
-        Err(error) => Err(RsomicsError::Io(io::Error::new(
-            error.kind(),
-            format!("canonicalizing {role} {}: {error}", path.display()),
-        ))),
-    }
-}
+pub(crate) use rsomics_common::reject_output_alias;
 
 pub(crate) fn with_output<T>(
     path: &Path,
     operation: impl FnOnce(&mut dyn Write) -> Result<T>,
 ) -> Result<T> {
-    if path == Path::new("-") {
-        return operation(&mut io::stdout().lock());
-    }
     reject_unsupported_compression_suffix(path)?;
-
-    let existing_permissions = match fs::metadata(path) {
-        Ok(metadata) => Some(metadata.permissions()),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => None,
-        Err(error) => {
-            return Err(RsomicsError::Io(io::Error::new(
-                error.kind(),
-                format!(
-                    "reading existing output metadata {}: {error}",
-                    path.display()
-                ),
-            )));
-        }
-    };
-    let parent = path
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-        .unwrap_or_else(|| Path::new("."));
-    let mut builder = Builder::new();
-    builder.prefix(".rsomics-seq-");
-    #[cfg(unix)]
-    if existing_permissions.is_none() {
-        builder.permissions(fs::Permissions::from_mode(0o666));
-    }
-    if let Some(permissions) = existing_permissions.as_ref() {
-        builder.permissions(permissions.clone());
-    }
-    let mut temporary = builder.tempfile_in(parent).rs_with_context(|| {
-        format!(
-            "creating temporary output beside destination {}",
-            path.display()
-        )
-    })?;
-    if let Some(permissions) = existing_permissions {
-        temporary
-            .as_file()
-            .set_permissions(permissions)
-            .rs_with_context(|| format!("preserving permissions for output {}", path.display()))?;
-    }
-
-    let result = operation(temporary.as_file_mut())?;
-    temporary
-        .as_file_mut()
-        .flush()
-        .rs_context("flushing temporary sequence output")?;
-    temporary
-        .as_file_mut()
-        .sync_all()
-        .rs_context("syncing temporary sequence output")?;
-    temporary.persist(path).map_err(|error| {
-        let kind = error.error.kind();
-        RsomicsError::Io(io::Error::new(
-            kind,
-            format!(
-                "atomically persisting output {}: {}",
-                path.display(),
-                error.error
-            ),
-        ))
-    })?;
-    Ok(result)
+    write_output(Some(path), operation)
 }
 
 fn reject_unsupported_compression_suffix(path: &Path) -> Result<()> {
+    if path == Path::new("-") {
+        return Ok(());
+    }
     let extension = path
         .extension()
         .and_then(std::ffi::OsStr::to_str)
@@ -148,6 +32,8 @@ fn reject_unsupported_compression_suffix(path: &Path) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
     use super::*;
 
     #[test]
