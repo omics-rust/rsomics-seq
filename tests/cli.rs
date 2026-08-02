@@ -19,6 +19,19 @@ fn run(args: &[&str]) -> std::process::Output {
         .expect("run rsomics-seq")
 }
 
+fn run_with_stdin(args: &[&str], input: &[u8]) -> std::process::Output {
+    let mut child = Command::new(binary())
+        .args(args)
+        .current_dir(root())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("run rsomics-seq");
+    child.stdin.take().unwrap().write_all(input).unwrap();
+    child.wait_with_output().unwrap()
+}
+
 fn write_gzip_fixture(
     path: &Path,
     format: rsomics_seqio::Format,
@@ -178,6 +191,24 @@ fn grep_and_convert_fastq_preserve_records() {
     let convert = run(&["convert", "--to", "fasta", "tests/golden/stats.fq"]);
     assert!(convert.status.success());
     assert_eq!(convert.stdout, b">r1\nACGT\n>r2\nACGTNN\n>r3\nGGCCGGCC\n");
+}
+
+#[test]
+fn subcommands_compose_through_standard_streams() {
+    let selected = run(&["grep", "--pattern", "r2", "tests/golden/stats.fq"]);
+    assert!(selected.status.success());
+
+    let converted = run_with_stdin(&["convert", "--to", "fasta", "-"], &selected.stdout);
+    assert!(converted.status.success());
+    assert_eq!(converted.stdout, b">r2\nACGTNN\n");
+
+    let validated = run_with_stdin(&["validate", "-"], &converted.stdout);
+    assert!(validated.status.success());
+    assert!(String::from_utf8_lossy(&validated.stdout).contains("\tFASTA\t1\ttrue"));
+
+    let stats = run_with_stdin(&["stats", "-"], &converted.stdout);
+    assert!(stats.status.success());
+    assert!(String::from_utf8_lossy(&stats.stdout).contains("\t1\t6\t6\t6.0\t6"));
 }
 
 #[test]
