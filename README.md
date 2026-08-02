@@ -136,10 +136,6 @@ pipeline; speculative parallel implementations are outside this release.
 - Extended `seqkit stats --all` columns are not yet exposed.
 - `kmers` is an exact in-memory counter and is not intended for
   cardinalities that require a disk-backed counter.
-- `rsomics-common 0.7`, `rsomics-help 0.4`, `rsomics-seqio 0.3`, and
-  `rsomics-kmer 0.2.1` are not published yet. The manifest uses versioned
-  registry dependencies; CI temporarily patches exact revisions without
-  committing path dependencies.
 - Native Linux `aarch64` has correctness and compatibility CI but no
   representative performance measurement.
 
