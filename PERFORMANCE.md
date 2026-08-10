@@ -2,7 +2,9 @@
 
 Status: this records the gate used for the first five-command release. BGZF
 record output was added later as an additive I/O mode and carries no new
-throughput claim in this document.
+throughput claim in this document. Revision `2ca95b57a6f9` passed exact-head CI
+`31373872391` on native Linux and macOS for both x86_64 and aarch64 with the
+pinned SeqKit 2.13.0 differential required on every target.
 
 ## Exact identities
 
@@ -89,9 +91,9 @@ resource/strictness tradeoffs, not throughput wins.
 
 ## Thread-control finding
 
-The product accepts the shared `--threads` flag, but its current operations do
-not use the configured Rayon pool. Compressed path input uses one decompression
-worker feeding the streaming parser. A five-run control measured:
+The pre-release product accepted a shared `--threads` flag, but its operations
+did not use the configured Rayon pool. Compressed path input uses one
+decompression worker feeding the streaming parser. A five-run control measured:
 
 - `stats --threads 1`: 1.118 ± 0.021 s;
 - `stats --threads 4`: 1.110 ± 0.007 s;
@@ -99,10 +101,10 @@ worker feeding the streaming parser. A five-run control measured:
 - sequence grep `--threads 4`: 6.279 ± 0.363 s.
 
 There is no demonstrated scaling. The CPU affinity is therefore described as
-a four-core allocation, not a four-thread product mode. Before publication,
-the shared CLI must either make the flag control a concrete operation or stop
-advertising it for this product. This finding does not justify speculative
-parallel code or a new public foundation API.
+a four-core allocation, not a four-thread product mode. The release removed
+the ineffective flag instead of advertising unsupported parallelism. This
+finding does not justify speculative parallel code or a new public foundation
+API.
 
 ## Raw evidence
 
@@ -139,6 +141,5 @@ and
 
 - Native Linux `aarch64` has CI correctness evidence but no representative
   performance host.
-- The `--threads` product contract remains unresolved.
-- The referenced foundation versions are not published.
-- Final public API and hot-path review remain.
+- BGZF record output has correctness, finalization, and transactional evidence
+  but no separate throughput claim.

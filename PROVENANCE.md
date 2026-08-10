@@ -49,6 +49,9 @@ All listed rsomics implementations are team-owned.
 - Named output is transactional and rejects aliases of every input before
   processing. JSON/file-output conflicts use the common configuration-error
   contract.
+- Grep and convert use shared plain-or-BGZF encoding for `.gz`, `.bgz`, and
+  `.bgzf` named outputs. Report commands reject those suffixes rather than
+  placing uncompressed TSV under a compressed name.
 - User-supplied k-mer lengths are validated through a fallible product boundary
   before the foundation accumulator is constructed.
 - Grep's first release surface intentionally excludes regexes, pattern files,
