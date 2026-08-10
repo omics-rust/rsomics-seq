@@ -10,7 +10,7 @@ use rsomics_seq::{
     validate_sequences, write_kmer_tsv, write_stats_tsv, write_validation_tsv,
 };
 
-use crate::output::{reject_output_alias, with_output};
+use crate::output::{reject_output_alias, with_output, with_sequence_output};
 
 pub const META: ToolMeta = ToolMeta {
     name: env!("CARGO_PKG_NAME"),
@@ -201,7 +201,7 @@ impl Cli {
                 let report = if json {
                     grep_records(&args.input, &options, &mut std::io::sink())?
                 } else {
-                    with_output(&args.output, |output| {
+                    with_sequence_output(&args.output, |output| {
                         grep_records(&args.input, &options, output)
                     })?
                 };
@@ -213,7 +213,7 @@ impl Cli {
                 let report = if json {
                     convert_sequences(&args.input, args.to, &mut std::io::sink())?
                 } else {
-                    with_output(&args.output, |output| {
+                    with_sequence_output(&args.output, |output| {
                         convert_sequences(&args.input, args.to, output)
                     })?
                 };

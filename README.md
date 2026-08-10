@@ -36,8 +36,9 @@ persisted only after the operation succeeds. Exact, normalized, hard-link, and
 symbolic-link aliases of any input are rejected before reading or truncating
 data. New outputs use normal `0666 & !umask` permissions; replacements preserve
 the existing permission bits.
-Compressed named output is not implemented in this release; `.gz`, `.bgz`, and
-`.bgzf` output names are rejected instead of receiving uncompressed bytes.
+For `grep` and `convert`, `.gz`, `.bgz`, and `.bgzf` named outputs are BGZF.
+Report-producing commands still reject those suffixes instead of writing
+uncompressed TSV under a compressed name.
 
 ## Stable command semantics
 

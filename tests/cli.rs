@@ -408,13 +408,11 @@ fn json_output_conflict_is_config_error_exit_two() {
 }
 
 #[test]
-fn compressed_output_suffix_is_rejected_instead_of_writing_plain_text() {
+fn compressed_report_output_is_rejected_instead_of_writing_plain_text() {
     let directory = tempfile::tempdir().unwrap();
-    let output_path = directory.path().join("records.fa.gz");
+    let output_path = directory.path().join("stats.tsv.gz");
     let result = run(&[
-        "convert",
-        "--to",
-        "fasta",
+        "stats",
         "--output",
         output_path.to_str().unwrap(),
         "tests/golden/stats.fa",
@@ -640,4 +638,58 @@ fn grep_convert_and_validate_read_content_detected_gzip() {
         .unwrap();
     assert!(validate.status.success());
     assert!(String::from_utf8_lossy(&validate.stdout).contains("\tFASTQ\t1\ttrue"));
+}
+
+#[test]
+fn grep_and_convert_write_bgzf_sequence_outputs() {
+    let directory = tempfile::tempdir().unwrap();
+    let converted = directory.path().join("converted.fa.gz");
+    let convert = Command::new(binary())
+        .args(["convert", "--to", "fasta", "tests/golden/stats.fq"])
+        .arg("--output")
+        .arg(&converted)
+        .current_dir(root())
+        .output()
+        .unwrap();
+    assert!(
+        convert.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&convert.stderr)
+    );
+
+    let mut reader = rsomics_seqio::open_path(&converted).unwrap();
+    assert_eq!(reader.format(), rsomics_seqio::Format::Fasta);
+    let mut records = Vec::new();
+    while let Some(record) = reader.read_record().unwrap() {
+        records.push((record.id.to_vec(), record.seq.to_vec()));
+    }
+    assert_eq!(
+        records,
+        vec![
+            (b"r1".to_vec(), b"ACGT".to_vec()),
+            (b"r2".to_vec(), b"ACGTNN".to_vec()),
+            (b"r3".to_vec(), b"GGCCGGCC".to_vec()),
+        ]
+    );
+
+    let selected = directory.path().join("selected.fq.bgzf");
+    let grep = Command::new(binary())
+        .args(["grep", "--pattern", "r2", "tests/golden/stats.fq"])
+        .arg("--output")
+        .arg(&selected)
+        .current_dir(root())
+        .output()
+        .unwrap();
+    assert!(
+        grep.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&grep.stderr)
+    );
+
+    let mut reader = rsomics_seqio::open_path(&selected).unwrap();
+    assert_eq!(reader.format(), rsomics_seqio::Format::Fastq);
+    let record = reader.read_record().unwrap().unwrap();
+    assert_eq!(record.id, b"r2");
+    assert_eq!(record.qual, Some(b"IIIIII".as_slice()));
+    assert!(reader.read_record().unwrap().is_none());
 }

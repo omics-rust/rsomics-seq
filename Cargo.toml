@@ -16,10 +16,10 @@ readme = "README.md"
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 memchr = "2"
-rsomics-common = "0.11"
+rsomics-common = "0.12"
 rsomics-help = "0.4"
 rsomics-kmer = "0.2.1"
-rsomics-seqio = "0.4"
+rsomics-seqio = "0.5"
 serde = { version = "1", features = ["derive"] }
 tempfile = "3"
 

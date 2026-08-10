@@ -1,8 +1,8 @@
 # Representative compatibility and performance gate
 
-Status: the first five-command slice has representative Linux `x86_64`
-evidence and exact-head four-native-target CI. It is not approved for
-publication.
+Status: this records the gate used for the first five-command release. BGZF
+record output was added later as an additive I/O mode and carries no new
+throughput claim in this document.
 
 ## Exact identities
 
