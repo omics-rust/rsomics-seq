@@ -137,6 +137,20 @@ The correctness metadata and checksum ledgers have SHA-256 values
 and
 `f1c519e22d1d5c272060f8be5b52efb67f1116130637ef5307e7824ef80af7c9`.
 
+Release 0.2.0 was published from revision
+`516f4fda8b5b3e561931daaedb6f180a37131bd4` after exact-head CI
+`31377303031` passed on native Linux and macOS for x86_64 and aarch64. Every
+target built pinned SeqKit 2.13.0 and required the six live differentials;
+Linux x86_64 also passed strict Clippy, rustdoc, package verification, and all
+five benchmark smoke tests. Publication workflow `31377624437` produced an
+unyanked 34,422-byte registry archive with SHA-256
+`bad34749922a62f6e475ba2717bd58e7b2fdc97fe9e322eafd87928f0ece13f5`;
+its VCS metadata identifies the exact release revision. A fresh registry
+install reports 0.2.0. Its decompressed BGZF convert and grep smoke streams
+match SeqKit 2.13.0 at
+`56d4d5931d35fb089fa4ac1b58dda5fd76924400ca466d5d537550163b5b449b`
+and `e752a8bf2615a96a4cebd4dd13ff8379003054e514b07c208ac5660949c3e9c3`.
+
 ## Remaining gates
 
 - Native Linux `aarch64` has CI correctness evidence but no representative
