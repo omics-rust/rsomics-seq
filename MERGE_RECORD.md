@@ -1,8 +1,9 @@
 # Strand-extraction consolidation record
 
-Status: unreleased source implementation based on owner revision
-`d9734e51c4ed557f6d8790d97a686717ebc4769e`; no version bump, publication, or
-new performance claim. This extends the first-slice provenance in
+Status: 0.3.0 native delivery candidate; operation engines frozen at
+`3ba1818e85477573995f6a391522f2ef35054c79`. The original implementation used owner revision
+`d9734e51c4ed557f6d8790d97a686717ebc4769e`; it made no version bump, publication, or
+new performance claim at that stage. This extends the first-slice provenance in
 [`PROVENANCE.md`](PROVENANCE.md).
 
 ## Team-owned implementation assets
@@ -76,3 +77,15 @@ release suites exercise this source slice. Native Linux/macOS on both
 architectures and representative per-operation/workflow CPU, memory and I/O
 gates are subsequent delivery requirements. No historical performance result
 is inherited as a pass, and no publication is authorized by this record.
+
+## 0.3 delivery boundary
+
+Native implementation CI run 41424424381 passed all four native classes.
+The full 6,282,141-read campaign accepted the resource-use gates; standalone
+subseq/revcomp wall medians lost 2.57%/5.72% and timing ranges overlapped.
+This delivery changes package identity and delivery files only, not production
+Rust or dependency resolution. Its executables are not newly benchmarked.
+The owner-private helper follows the accepted rsomics-count/BED source-package,
+license-inventory, fresh-install and native-bundle pattern. Delivery CI must
+pass again at the final exact head. Registry publication remains held and its
+existing workflow is unchanged.

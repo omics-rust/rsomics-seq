@@ -1,7 +1,7 @@
 # rsomics-seq
 
 `rsomics-seq` is the coherent FASTA/FASTQ utility product in the rsomics
-family. Its first release scope contains five complete commands:
+family. The 0.3.0 delivery candidate contains seven complete commands:
 
 - `stats`: basic per-input sequence statistics compatible with
   `seqkit stats -T`;
@@ -9,6 +9,20 @@ family. Its first release scope contains five complete commands:
 - `grep`: literal record filtering by ID, full name, or sequence;
 - `convert`: FASTA/FASTQ normalization and FASTQ-to-FASTA conversion;
 - `validate`: strict complete-stream FASTA/FASTQ validation.
+- `subseq`: signed-coordinate sequence and quality extraction;
+- `revcomp`: alphabet-aware reverse complement with quality reversal.
+
+## Installation status
+
+Version 0.3.0 is a delivery candidate until its exact-head four-native CI and
+public GitHub release are verified. GitHub binary bundles and source crates
+are distinct from registry publication; crates.io 0.3.0 is not claimed.
+For a downloaded source crate, extract it and use
+`cargo install --path rsomics-seq-0.3.0 --locked --root INSTALL_ROOT`.
+Binary bundles contain one executable, project/dependency licenses and
+`BUILD.json`; verify their SHA-256 against the accompanying sums before use.
+The source-package and native-install lifecycle is checked on Linux/macOS
+`x86_64` and `aarch64`.
 
 All commands accept plain, gzip, or BGZF input detected from content.
 `-` reads stdin.
@@ -40,9 +54,9 @@ For `grep` and `convert`, `.gz`, `.bgz`, and `.bgzf` named outputs are BGZF.
 Report-producing commands still reject those suffixes instead of writing
 uncompressed TSV under a compressed name.
 
-## Development strand-extraction slice (unreleased)
+## Strand extraction
 
-The working source additionally implements two connected FASTA/FASTQ commands:
+Two connected FASTA/FASTQ commands:
 
 ```text
 rsomics-seq subseq -r 2:-2 reads.fq.gz | rsomics-seq revcomp
@@ -65,9 +79,13 @@ header domain remains printable ASCII plus tab; non-ASCII is rejected.
 
 BED/GTF, flanks, indexed retrieval and line wrapping are excluded. Local
 complete-record differentials use the observed SeqKit **2.14.0** executable;
-historical 2.13-era goldens are retained separately. Native four-platform CI
-and representative performance qualification remain pending for this slice;
-the earlier release's performance results do not apply. Source reuse and
+historical 2.13-era goldens are retained separately. Implementation source
+`3ba1818e` passed native four-platform CI (run 41424424381). A full
+6,282,141-read campaign accepted the resource-use gate, not universal speed:
+standalone subseq/revcomp wall medians were 2.57%/5.72% slower, with timing
+ranges overlapping. Final 0.3 metadata-only binaries are not remeasured
+executables and do not inherit measured binary hashes. Earlier release
+timings do not qualify these new commands. Source reuse and
 oracle provenance are recorded in [`MERGE_RECORD.md`](MERGE_RECORD.md).
 
 ## Stable command semantics

@@ -21,11 +21,21 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/checkout@v6
         with:
-          repository: shenwei356/seqkit
-          ref: d13b5fa388cc869de05abe1bdb07980eef5efb4e
-          path: target/ci/seqkit
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Prepare explicit runner storage
+        shell: bash
+        run: |
+          set -euo pipefail
+          for pair in CARGO_HOME=cargo-home CARGO_TARGET_DIR=cargo-target RUSTUP_HOME=rustup-home TMPDIR=scratch XDG_CACHE_HOME=cache GOCACHE=go-cache GOMODCACHE=go-mod-cache; do
+            name="${pair%%=*}"
+            path="$RUNNER_TEMP/${pair#*=}"
+            mkdir -p "$path"
+            printf '%s=%s\n' "$name" "$path" >> "$GITHUB_ENV"
+          done
+          mkdir -p "$RUNNER_TEMP/delivery"
+          echo 'GOENV=off' >> "$GITHUB_ENV"
       - uses: dtolnay/rust-toolchain@1.91.0
         with:
           components: rustfmt, clippy
@@ -46,6 +56,18 @@ jobs:
           test -z "${CARGO_BUILD_TARGET:-}"
           rustc -Vv
           test "$(rustc -Vv | sed -n 's/^host: //p')" = "$host"
+          echo "EXPECTED_HOST=$host" >> "$GITHUB_ENV"
+          case "$host" in
+            x86_64-unknown-linux-gnu) target=linux-x86_64 ;;
+            aarch64-unknown-linux-gnu) target=linux-aarch64 ;;
+            x86_64-apple-darwin) target=macos-x86_64 ;;
+            aarch64-apple-darwin) target=macos-aarch64 ;;
+          esac
+          echo "NATIVE_TARGET=$target" >> "$GITHUB_ENV"
+          rustc -Vv > "$RUNNER_TEMP/delivery/rustc.txt"
+          cargo -V > "$RUNNER_TEMP/delivery/cargo.txt"
+          uname -sm > "$RUNNER_TEMP/delivery/native-host.txt"
+          cargo metadata --locked --no-deps --format-version 1 | python3 -B -c 'import json,os,sys; assert json.load(sys.stdin)["target_directory"] == os.environ["CARGO_TARGET_DIR"]'
 
       - uses: actions/setup-go@v6
         with:
@@ -53,27 +75,60 @@ jobs:
           cache: false
 
       - name: Build pinned SeqKit oracle
-        working-directory: target/ci/seqkit
         run: |
+          git clone --no-checkout https://github.com/shenwei356/seqkit.git "$RUNNER_TEMP/seqkit-source"
+          cd "$RUNNER_TEMP/seqkit-source"
+          git checkout --detach d13b5fa388cc869de05abe1bdb07980eef5efb4e
           go build -trimpath -o "$RUNNER_TEMP/seqkit" ./seqkit
           test "$("$RUNNER_TEMP/seqkit" version)" = "seqkit v2.13.0"
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
 
-      - run: cargo fmt --all -- --check
+      - run: cargo fmt --all -- --check > "$RUNNER_TEMP/delivery/fmt.stdout" 2> "$RUNNER_TEMP/delivery/fmt.stderr"
         if: matrix.runner == 'ubuntu-24.04'
-      - run: cargo clippy --locked --all-targets --all-features -- -D warnings
+      - run: cargo clippy --locked --all-targets --all-features -- -D warnings > "$RUNNER_TEMP/delivery/clippy.stdout" 2> "$RUNNER_TEMP/delivery/clippy.stderr"
         if: matrix.runner == 'ubuntu-24.04'
-      - run: cargo doc --locked --no-deps --all-features
+      - run: cargo doc --locked --no-deps --all-features > "$RUNNER_TEMP/delivery/rustdoc.stdout" 2> "$RUNNER_TEMP/delivery/rustdoc.stderr"
         if: matrix.runner == 'ubuntu-24.04'
         env:
           RUSTDOCFLAGS: -D warnings
-      - run: cargo package --locked
-        if: matrix.runner == 'ubuntu-24.04'
-      - run: cargo test --locked --all-features
+      - run: cargo test --locked --all-features > "$RUNNER_TEMP/delivery/debug.stdout" 2> "$RUNNER_TEMP/delivery/debug.stderr"
         env:
           RSOMICS_REQUIRE_SEQKIT: "1"
-      - run: cargo test --release --locked --all-features
+      - run: cargo test --release --locked --all-features > "$RUNNER_TEMP/delivery/release.stdout" 2> "$RUNNER_TEMP/delivery/release.stderr"
         env:
           RSOMICS_REQUIRE_SEQKIT: "1"
-      - run: cargo bench --locked --bench operations -- --test
+      - run: cargo bench --locked --bench operations -- --test > "$RUNNER_TEMP/delivery/bench.stdout" 2> "$RUNNER_TEMP/delivery/bench.stderr"
         if: matrix.runner == 'ubuntu-24.04'
+      - name: Verify complete normalized source package
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo metadata --locked --no-deps --format-version 1 > "$RUNNER_TEMP/delivery/package-metadata.json"
+          cargo package --locked --list > "$RUNNER_TEMP/delivery/package-files.txt"
+          cargo package --locked > "$RUNNER_TEMP/delivery/package.stdout" 2> "$RUNNER_TEMP/delivery/package.stderr"
+          python3 -B scripts/delivery.py source > "$RUNNER_TEMP/delivery/source.stdout" 2> "$RUNNER_TEMP/delivery/source.stderr"
+      - name: Fresh source-package install and seven-command lifecycle
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo install --path "$PACKAGE_DIRECTORY" --locked --root "$RUNNER_TEMP/installed" > "$RUNNER_TEMP/delivery/install.stdout" 2> "$RUNNER_TEMP/delivery/install.stderr"
+          python3 -B "$PACKAGE_DIRECTORY/scripts/delivery.py" smoke --binary "$RUNNER_TEMP/installed/bin/rsomics-seq"
+          python3 -B scripts/delivery.py bundle --binary "$RUNNER_TEMP/installed/bin/rsomics-seq" > "$RUNNER_TEMP/delivery/bundle.stdout" 2> "$RUNNER_TEMP/delivery/bundle.stderr"
+      - name: Retain explicit delivery assets and original logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rsomics-seq-delivery-${{ matrix.runner }}-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/delivery/rsomics-seq-0.3.0.crate
+            ${{ runner.temp }}/delivery/rsomics-seq-0.3.0-*.tar.gz
+            ${{ runner.temp }}/delivery/SHA256SUMS
+            ${{ runner.temp }}/delivery/*.json
+            ${{ runner.temp }}/delivery/*.txt
+            ${{ runner.temp }}/delivery/*.stdout
+            ${{ runner.temp }}/delivery/*.stderr
+            ${{ runner.temp }}/delivery/lifecycle/*.json
+            ${{ runner.temp }}/delivery/lifecycle/*.stdout
+            ${{ runner.temp }}/delivery/lifecycle/*.stderr
+          if-no-files-found: error
+          retention-days: 90
