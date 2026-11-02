@@ -1,7 +1,7 @@
 # rsomics-seq
 
 `rsomics-seq` is the coherent FASTA/FASTQ utility product in the rsomics
-family. The 0.3.0 delivery candidate contains seven complete commands:
+family. Version 0.3.0 contains seven complete commands:
 
 - `stats`: basic per-input sequence statistics compatible with
   `seqkit stats -T`;
@@ -14,9 +14,12 @@ family. The 0.3.0 delivery candidate contains seven complete commands:
 
 ## Installation status
 
-Version 0.3.0 is a delivery candidate until its exact-head four-native CI and
-public GitHub release are verified. GitHub binary bundles and source crates
-are distinct from registry publication; crates.io 0.3.0 is not claimed.
+Version 0.3.0 is available from the
+[GitHub release](https://github.com/omics-rust/rsomics-seq/releases/tag/v0.3.0),
+with four native binary bundles, a source crate and SHA256SUMS. Exact-head
+four-native CI passed at `8eaf9c8a685c08bdf1698745b65a3a01c609ec70`
+(run 41435718744). GitHub delivery is distinct from registry publication;
+crates.io 0.3.0 is not claimed. Release assets are unsigned.
 For a downloaded source crate, extract it and use
 `cargo install --path rsomics-seq-0.3.0 --locked --root INSTALL_ROOT`.
 Binary bundles contain one executable, project/dependency licenses and
