@@ -83,6 +83,16 @@ fn run_with_output(operation: &str, input: &Path, output: &Path) -> std::process
                 .arg("--output")
                 .arg(output);
         }
+        "subseq" => {
+            command
+                .args(["subseq", "-r", "2:5"])
+                .arg(input)
+                .arg("-o")
+                .arg(output);
+        }
+        "revcomp" => {
+            command.arg("revcomp").arg(input).arg("-o").arg(output);
+        }
         _ => panic!("unknown operation"),
     }
     command.output().unwrap()
@@ -97,6 +107,8 @@ fn help_succeeds_without_input() {
         &["grep", "--help"],
         &["convert", "--help"],
         &["validate", "--help"],
+        &["subseq", "--help"],
+        &["revcomp", "--help"],
     ] {
         let output = run(args);
         assert!(
@@ -428,7 +440,9 @@ fn compressed_report_output_is_rejected_instead_of_writing_plain_text() {
 
 #[test]
 fn exact_normalized_and_hardlink_output_aliases_preserve_inputs() {
-    for operation in ["stats", "kmers", "grep", "convert", "validate"] {
+    for operation in [
+        "stats", "kmers", "grep", "convert", "validate", "subseq", "revcomp",
+    ] {
         for alias in ["exact", "normalized", "hardlink"] {
             let directory = tempfile::tempdir().unwrap();
             let input = directory.path().join("input.fa");
@@ -462,7 +476,9 @@ fn exact_normalized_and_hardlink_output_aliases_preserve_inputs() {
 fn symlink_output_aliases_preserve_inputs() {
     use std::os::unix::fs::symlink;
 
-    for operation in ["stats", "kmers", "grep", "convert", "validate"] {
+    for operation in [
+        "stats", "kmers", "grep", "convert", "validate", "subseq", "revcomp",
+    ] {
         let directory = tempfile::tempdir().unwrap();
         let input = directory.path().join("input.fa");
         let output = directory.path().join("output.tsv");
@@ -488,7 +504,9 @@ fn named_outputs_are_transactional_on_operation_failure() {
     let output = directory.path().join("output.tsv");
     fs::write(&malformed, b"@read\nACGT\n+\n!!!\n").unwrap();
 
-    for operation in ["stats", "kmers", "grep", "convert", "validate"] {
+    for operation in [
+        "stats", "kmers", "grep", "convert", "validate", "subseq", "revcomp",
+    ] {
         fs::write(&output, b"existing output\n").unwrap();
         let result = run_with_output(operation, &malformed, &output);
         assert_eq!(
@@ -692,4 +710,233 @@ fn grep_and_convert_write_bgzf_sequence_outputs() {
     assert_eq!(record.id, b"r2");
     assert_eq!(record.qual, Some(b"IIIIII".as_slice()));
     assert!(reader.read_record().unwrap().is_none());
+}
+
+#[test]
+fn subseq_and_revcomp_compose_preserving_full_fastq_records() {
+    let input = b"@one\t full header\nACGTac\n+\n!\"#$%&\n@two\nTG\n+\nIJ\n";
+    let extracted = run_with_stdin(&["subseq", "-r", "2:5"], input);
+    assert!(
+        extracted.status.success(),
+        "{}",
+        String::from_utf8_lossy(&extracted.stderr)
+    );
+    assert_eq!(
+        extracted.stdout,
+        b"@one\t full header\nCGTa\n+\n\"#$%\n@two\nG\n+\nJ\n"
+    );
+    let reversed = run_with_stdin(&["revcomp"], &extracted.stdout);
+    assert!(
+        reversed.status.success(),
+        "{}",
+        String::from_utf8_lossy(&reversed.stderr)
+    );
+    assert_eq!(
+        reversed.stdout,
+        b"@one\t full header\ntACG\n+\n%$#\"\n@two\nC\n+\nJ\n"
+    );
+}
+
+#[test]
+fn strand_operations_retain_historical_source_goldens() {
+    for (input, region, coord, expected) in [
+        ("test.fa", "1:5", false, "first5.fa"),
+        ("test.fa", "-5:-1", false, "last5.fa"),
+        ("test.fa", "2:-2", false, "inner.fa"),
+        ("test.fa", "1:100", false, "clamp.fa"),
+        ("test.fa", "1:5", true, "first5_coord.fa"),
+        ("test.fa", "-5:-1", true, "last5_coord.fa"),
+        ("test.fa", "-21:-1", false, "negclamp.fa"),
+        ("tab_header.fa", "1:5", true, "tab_coord.fa"),
+        ("tab_header.fa", "1:5", false, "tab_plain.fa"),
+    ] {
+        let path = format!("tests/golden/subseq/{input}");
+        let mut args = vec!["subseq", "-r", region, &path];
+        if coord {
+            args.push("-R");
+        }
+        let actual = run(&args);
+        assert!(
+            actual.status.success(),
+            "{}",
+            String::from_utf8_lossy(&actual.stderr)
+        );
+        assert_eq!(
+            actual.stdout,
+            fs::read(root().join("tests/golden/subseq").join(expected)).unwrap(),
+            "{expected}"
+        );
+    }
+    let actual = run(&["revcomp", "tests/golden/revcomp/rna.fq"]);
+    assert!(actual.status.success());
+    assert_eq!(
+        actual.stdout,
+        fs::read(root().join("tests/golden/revcomp/rna.seqkit.revcomp.fq")).unwrap()
+    );
+}
+
+#[test]
+fn subseq_signed_clamped_and_empty_windows_preserve_quality_coordinates() {
+    let input = b"@one\nACGTac\n+\n!\"#$%&\n@two\nTG\n+\nIJ\n";
+    for (region, expected) in [
+        ("1:3", b"@one\nACG\n+\n!\"#\n@two\nTG\n+\nIJ\n".as_slice()),
+        ("-3:-1", b"@one\nTac\n+\n$%&\n@two\nTG\n+\nIJ\n"),
+        ("2:-2", b"@one\nCGTa\n+\n\"#$%\n@two\n\n+\n\n"),
+        ("1:100", input.as_slice()),
+        ("-100:-1", input.as_slice()),
+        ("5:2", b"@one\n\n+\n\n@two\n\n+\n\n"),
+        ("20:30", b"@one\n\n+\n\n@two\n\n+\n\n"),
+        ("1:-100", b"@one\n\n+\n\n@two\n\n+\n\n"),
+        ("-9223372036854775808:-1", input.as_slice()),
+        ("1:9223372036854775807", input.as_slice()),
+    ] {
+        let result = run_with_stdin(&["subseq", "-r", region], input);
+        assert!(
+            result.status.success(),
+            "{region}: {}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        assert_eq!(result.stdout, expected, "{region}");
+    }
+}
+
+#[test]
+fn subseq_coordinate_headers_follow_source_and_default_preserves_bytes() {
+    let input = b">one\t desc  more\nACGTac\n>two\nTG\n>raw\tdesc\nAA\n";
+    let plain = run_with_stdin(&["subseq", "-r", "1:3"], input);
+    assert!(plain.status.success());
+    assert_eq!(
+        plain.stdout,
+        b">one\t desc  more\nACG\n>two\nTG\n>raw\tdesc\nAA\n"
+    );
+    let coord = run_with_stdin(&["subseq", "-r", "1:3", "-R"], input);
+    assert!(
+        coord.status.success(),
+        "{}",
+        String::from_utf8_lossy(&coord.stderr)
+    );
+    assert_eq!(
+        coord.stdout,
+        b">one:1-3 esc  more\nACG\n>two:1-3 \nTG\n>raw:1-3 desc\nAA\n"
+    );
+    for args in [&["subseq", "-r", "1:3"][..], &["revcomp"]] {
+        let rejected = run_with_stdin(args, b">raw\xff\nACGT\n");
+        assert_eq!(rejected.status.code(), Some(1));
+        assert!(
+            String::from_utf8_lossy(&rejected.stderr)
+                .contains("invalid byte in sequence identifier")
+        );
+    }
+}
+
+#[test]
+fn revcomp_keeps_first_record_alphabet_case_and_full_quality() {
+    for (input, expected) in [
+        (
+            b">one\nACGTacRysWKmbdHVN\n>later\nAaTtUu\n".as_slice(),
+            b">one\nNBDhvkMWsrYgtACGT\n>later\nuUaAtT\n".as_slice(),
+        ),
+        (
+            b">one\nACGUacRysWKmbdHVN\n>later\nAaTtUu\n",
+            b">one\nNBDhvkMWsrYguACGU\n>later\naAtTuU\n",
+        ),
+        (
+            b">one\nMKWVTF\n>later\nAaTtUu\n",
+            b">one\nFTVWKM\n>later\nuUtTaA\n",
+        ),
+        (
+            b">one\nACGT?\n>later\nAaTtUu\n",
+            b">one\n?TGCA\n>later\nuUtTaA\n",
+        ),
+        (b">one\n\n>later\nAaTtUu\n", b">one\n\n>later\nuUtTaA\n"),
+        (b"@rna\nACGUac\n+\n!\"#$%&\n", b"@rna\nguACGU\n+\n&%$#\"!\n"),
+    ] {
+        let result = run_with_stdin(&["revcomp"], input);
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        assert_eq!(result.stdout, expected);
+    }
+}
+
+#[test]
+fn invalid_regions_fail_before_input_or_output_without_panicking() {
+    for region in [
+        "0:1",
+        "1:0",
+        "-1:2",
+        "1",
+        "1:2:3",
+        "+1:2",
+        "1:+2",
+        "1:x",
+        "9223372036854775808:1",
+    ] {
+        let result = run(&["--json", "subseq", "-r", region, "does-not-exist.fa"]);
+        assert_eq!(
+            result.status.code(),
+            Some(1),
+            "{region}: {}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        assert!(result.stdout.is_empty());
+        assert_eq!(error_envelope(&result)["error"]["kind"], "InvalidInput");
+    }
+}
+
+#[test]
+fn strand_operations_use_json_and_bgzf_atomic_output_contracts() {
+    let directory = tempfile::tempdir().unwrap();
+    let input = directory.path().join("input.data");
+    write_gzip_fixture(
+        &input,
+        rsomics_seqio::Format::Fastq,
+        rsomics_seqio::Record {
+            id: b"one sample",
+            seq: b"ACGTac",
+            qual: Some(b"!\"#$%&"),
+        },
+    );
+    for (operation, expected) in [
+        ("subseq", b"@one sample\nCGTa\n+\n\"#$%\n".as_slice()),
+        ("revcomp", b"@one sample\ngtACGT\n+\n&%$#\"!\n".as_slice()),
+    ] {
+        let output = directory.path().join(format!("{operation}.fq.bgzf"));
+        let result = run_with_output(operation, &input, &output);
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        let decoded = run(&["convert", "--to", "fastq", output.to_str().unwrap()]);
+        assert!(decoded.status.success());
+        assert_eq!(decoded.stdout, expected);
+
+        let mut args = vec!["--json", operation];
+        if operation == "subseq" {
+            args.extend(["-r", "2:5"]);
+        }
+        args.push(input.to_str().unwrap());
+        let summary = run(&args);
+        assert!(summary.status.success());
+        let envelope: serde_json::Value = serde_json::from_slice(&summary.stdout).unwrap();
+        assert_eq!(envelope["result"]["operation"], operation);
+        assert_eq!(envelope["result"]["data"]["records"], 1);
+        args.extend(["-o", output.to_str().unwrap()]);
+        let conflict = run(&args);
+        assert_eq!(conflict.status.code(), Some(2));
+
+        let malformed = directory.path().join("broken.fq");
+        fs::write(
+            &malformed,
+            b"@valid\nACGT\n+\n!#$%\n@broken\nACGT\n+\nIII\n",
+        )
+        .unwrap();
+        let original = fs::read(&output).unwrap();
+        let failed = run_with_output(operation, &malformed, &output);
+        assert_eq!(failed.status.code(), Some(1));
+        assert_eq!(fs::read(&output).unwrap(), original);
+    }
 }

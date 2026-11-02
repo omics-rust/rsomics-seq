@@ -30,6 +30,23 @@ jobs:
         with:
           components: rustfmt, clippy
 
+      - name: Verify native host
+        shell: bash
+        run: |
+          set -euo pipefail
+          case '${{ matrix.runner }}' in
+            ubuntu-24.04) system=Linux; arch=x86_64; host=x86_64-unknown-linux-gnu ;;
+            ubuntu-24.04-arm) system=Linux; arch=aarch64; host=aarch64-unknown-linux-gnu ;;
+            macos-15-intel) system=Darwin; arch=x86_64; host=x86_64-apple-darwin ;;
+            macos-15) system=Darwin; arch=arm64; host=aarch64-apple-darwin ;;
+            *) exit 1 ;;
+          esac
+          test "$(uname -s)" = "$system"
+          test "$(uname -m)" = "$arch"
+          test -z "${CARGO_BUILD_TARGET:-}"
+          rustc -Vv
+          test "$(rustc -Vv | sed -n 's/^host: //p')" = "$host"
+
       - uses: actions/setup-go@v6
         with:
           go-version: "1.25.5"
@@ -53,6 +70,9 @@ jobs:
       - run: cargo package --locked
         if: matrix.runner == 'ubuntu-24.04'
       - run: cargo test --locked --all-features
+        env:
+          RSOMICS_REQUIRE_SEQKIT: "1"
+      - run: cargo test --release --locked --all-features
         env:
           RSOMICS_REQUIRE_SEQKIT: "1"
       - run: cargo bench --locked --bench operations -- --test

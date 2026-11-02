@@ -70,6 +70,33 @@ where
     }
 }
 
+pub(crate) fn rewrite_records<F>(
+    input: &str,
+    output: &mut dyn std::io::Write,
+    mut visit: F,
+) -> Result<(Format, u64)>
+where
+    F: FnMut(Record<'_>, &mut Writer<&mut dyn std::io::Write>) -> Result<()>,
+{
+    let mut output = Some(output);
+    let mut writer = None;
+    let mut records = 0u64;
+    let format = scan_records_with_format(input, |format, record| {
+        let writer = writer.get_or_insert_with(|| {
+            Writer::new(output.take().expect("writer is initialized once"), format)
+        });
+        visit(record, writer)?;
+        records = records.checked_add(1).ok_or_else(|| {
+            rsomics_common::RsomicsError::InvalidInput("record count exceeds u64 capacity".into())
+        })?;
+        Ok(())
+    })?;
+    if let Some(writer) = writer {
+        writer.finish()?;
+    }
+    Ok((format, records))
+}
+
 fn drain<R, F>(input: &str, mut reader: R, visit: &mut F) -> Result<Format>
 where
     R: RecordReader,

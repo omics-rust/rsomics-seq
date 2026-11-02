@@ -40,6 +40,36 @@ For `grep` and `convert`, `.gz`, `.bgz`, and `.bgzf` named outputs are BGZF.
 Report-producing commands still reject those suffixes instead of writing
 uncompressed TSV under a compressed name.
 
+## Development strand-extraction slice (unreleased)
+
+The working source additionally implements two connected FASTA/FASTQ commands:
+
+```text
+rsomics-seq subseq -r 2:-2 reads.fq.gz | rsomics-seq revcomp
+rsomics-seq subseq -r -100:-1 -R assembly.fa -o tail.fa.bgzf
+```
+
+`subseq` uses signed, nonzero, 1-based inclusive coordinates. Negative values
+count from the end; out-of-range bounds clamp, and missing or reversed windows
+emit empty sequences with matching empty FASTQ qualities. Input order, format,
+and complete valid headers are preserved by default. `-R/--region-coord`
+instead uses SeqKit's coordinate-header formatting, including its trailing
+space for an absent description and unusual repeated-whitespace behavior.
+
+`revcomp` infers one alphabet from the first record's first 10,000 bases,
+preserves IUPAC letter case, and reverses FASTQ qualities with the sequence.
+Protein or unclassified input is reversed without complementing. These
+commands share existing stdin, content-detected compression, JSON, alias
+refusal, transactional output, and named BGZF contracts. The strict existing
+header domain remains printable ASCII plus tab; non-ASCII is rejected.
+
+BED/GTF, flanks, indexed retrieval and line wrapping are excluded. Local
+complete-record differentials use the observed SeqKit **2.14.0** executable;
+historical 2.13-era goldens are retained separately. Native four-platform CI
+and representative performance qualification remain pending for this slice;
+the earlier release's performance results do not apply. Source reuse and
+oracle provenance are recorded in [`MERGE_RECORD.md`](MERGE_RECORD.md).
+
 ## Stable command semantics
 
 ### `stats`

@@ -6,8 +6,10 @@ use serde::Serialize;
 
 use rsomics_seq::{
     ConvertFormat, ConvertReport, GrepMode, GrepOptions, GrepReport, KmerOptions, KmerReport,
-    StatsReport, ValidationReport, compute_stats, convert_sequences, count_kmers, grep_records,
-    validate_sequences, write_kmer_tsv, write_stats_tsv, write_validation_tsv,
+    Region, RevcompReport, StatsReport, SubseqReport, ValidationReport, compute_stats,
+    convert_sequences, count_kmers, extract_subsequences, grep_records,
+    reverse_complement_sequences, validate_sequences, write_kmer_tsv, write_stats_tsv,
+    write_validation_tsv,
 };
 
 use crate::output::{reject_output_alias, with_output, with_sequence_output};
@@ -45,6 +47,10 @@ enum Command {
     Convert(ConvertArgs),
     /// Strictly parse and validate a complete FASTA/FASTQ stream.
     Validate(ValidateArgs),
+    /// Extract signed, 1-based inclusive regions while preserving qualities.
+    Subseq(SubseqArgs),
+    /// Reverse-complement records and reverse FASTQ quality scores.
+    Revcomp(RevcompArgs),
 }
 
 #[derive(Debug, Args)]
@@ -142,6 +148,36 @@ struct ValidateArgs {
     output: PathBuf,
 }
 
+#[derive(Debug, Args)]
+struct SubseqArgs {
+    /// FASTA/FASTQ input; `-` reads stdin.
+    #[arg(default_value = "-")]
+    input: String,
+
+    /// Signed, nonzero START:END coordinates; negative values count from the end.
+    #[arg(short = 'r', long, allow_hyphen_values = true)]
+    region: String,
+
+    /// Append requested coordinates to the ID using SeqKit header formatting.
+    #[arg(short = 'R', long)]
+    region_coord: bool,
+
+    /// Write extracted records here; `-` writes stdout.
+    #[arg(short, long, default_value = "-")]
+    output: PathBuf,
+}
+
+#[derive(Debug, Args)]
+struct RevcompArgs {
+    /// FASTA/FASTQ input; `-` reads stdin.
+    #[arg(default_value = "-")]
+    input: String,
+
+    /// Write transformed records here; `-` writes stdout.
+    #[arg(short, long, default_value = "-")]
+    output: PathBuf,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(tag = "operation", content = "data", rename_all = "lowercase")]
 pub enum CommandResult {
@@ -150,6 +186,8 @@ pub enum CommandResult {
     Grep(GrepReport),
     Convert(ConvertReport),
     Validate(ValidationReport),
+    Subseq(SubseqReport),
+    Revcomp(RevcompReport),
 }
 
 impl Cli {
@@ -227,6 +265,36 @@ impl Cli {
                     with_output(&args.output, |output| write_validation_tsv(&report, output))?;
                 }
                 Ok(CommandResult::Validate(report))
+            }
+            Command::Subseq(args) => {
+                validate_json_output(json, &args.output)?;
+                reject_output_alias(&args.output, [std::path::Path::new(args.input.as_str())])?;
+                let region: Region = args.region.parse()?;
+                let report = if json {
+                    extract_subsequences(
+                        &args.input,
+                        region,
+                        args.region_coord,
+                        &mut std::io::sink(),
+                    )?
+                } else {
+                    with_sequence_output(&args.output, |output| {
+                        extract_subsequences(&args.input, region, args.region_coord, output)
+                    })?
+                };
+                Ok(CommandResult::Subseq(report))
+            }
+            Command::Revcomp(args) => {
+                validate_json_output(json, &args.output)?;
+                reject_output_alias(&args.output, [std::path::Path::new(args.input.as_str())])?;
+                let report = if json {
+                    reverse_complement_sequences(&args.input, &mut std::io::sink())?
+                } else {
+                    with_sequence_output(&args.output, |output| {
+                        reverse_complement_sequences(&args.input, output)
+                    })?
+                };
+                Ok(CommandResult::Revcomp(report))
             }
         }
     }

@@ -40,6 +40,94 @@ fn run_strings(program: &Path, args: &[String]) -> std::process::Output {
         .unwrap()
 }
 
+fn run_stdin(program: &Path, args: &[&str], input: &[u8]) -> std::process::Output {
+    let mut child = Command::new(program)
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("compatibility executable must be available");
+    child.stdin.take().unwrap().write_all(input).unwrap();
+    child.wait_with_output().unwrap()
+}
+
+#[test]
+fn signed_subsequences_match_complete_live_seqkit_records() {
+    assert!(available(), "live subsequence differential requires SeqKit");
+    let ours = PathBuf::from(env!("CARGO_BIN_EXE_rsomics-seq"));
+    for input in [
+        b">one\t desc  more\nACGTac\n>two\nTG\n".as_slice(),
+        b"@one\t desc  more\nACGTac\n+\n!\"#$%&\n@two\nTG\n+\nIJ\n".as_slice(),
+    ] {
+        for region in [
+            "1:3", "-3:-1", "2:-2", "1:100", "-100:-1", "5:2", "20:30", "1:-100",
+        ] {
+            for coord in [false, true] {
+                let mut our_args = vec!["subseq", "-r", region];
+                let mut source_args = vec!["subseq", "-w", "0", "-r", region];
+                if coord {
+                    our_args.push("-R");
+                    source_args.push("-R");
+                }
+                let actual = run_stdin(&ours, &our_args, input);
+                let source = run_stdin(Path::new("seqkit"), &source_args, input);
+                assert!(
+                    actual.status.success(),
+                    "{our_args:?}: {}",
+                    String::from_utf8_lossy(&actual.stderr)
+                );
+                assert!(
+                    source.status.success(),
+                    "{source_args:?}: {}",
+                    String::from_utf8_lossy(&source.stderr)
+                );
+                assert_eq!(
+                    actual.stdout, source.stdout,
+                    "region={region}, coord={coord}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn reverse_complement_matches_complete_live_seqkit_records() {
+    assert!(
+        available(),
+        "live reverse-complement differential requires SeqKit"
+    );
+    let ours = PathBuf::from(env!("CARGO_BIN_EXE_rsomics-seq"));
+    for input in [
+        b">one\t full header\nACGTacRysWKmbdHVN\n>later\nAaTtUu\n".as_slice(),
+        b">one\t full header\nACGUacRysWKmbdHVN\n>later\nAaTtUu\n",
+        b">one\nMKWVTF\n>later\nAaTtUu\n",
+        b">one\nACGT?\n>later\nAaTtUu\n",
+        b">one\n\n>later\nAaTtUu\n",
+        b"@one\t full header\nACGTac\n+\n!\"#$%&\n@two\nTG\n+\nIJ\n",
+        b"@rna\nACGUac\n+\n!\"#$%&\n",
+    ] {
+        let actual = run_stdin(&ours, &["revcomp"], input);
+        let source = run_stdin(Path::new("seqkit"), &["seq", "-r", "-p", "-w", "0"], input);
+        assert!(
+            actual.status.success(),
+            "{}",
+            String::from_utf8_lossy(&actual.stderr)
+        );
+        assert!(
+            source.status.success(),
+            "{}",
+            String::from_utf8_lossy(&source.stderr)
+        );
+        assert_eq!(
+            actual.stdout,
+            source.stdout,
+            "input={}",
+            String::from_utf8_lossy(input)
+        );
+    }
+}
+
 #[test]
 fn basic_stats_match_live_seqkit() {
     if !require_or_skip() {
